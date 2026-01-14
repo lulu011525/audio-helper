@@ -144,9 +144,27 @@ else:
                         status_text.text('AI 正在聆聽並撰寫筆記...')
                         progress_bar.progress(70)
                         
-                        # 使用 Gemini 1.5 Flash
-                        model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+                        # --- 模型選擇邏輯 (自動救援) ---
+                        model = None
+                        model_candidates = ["gemini-1.5-flash-latest", "gemini-1.5-flash-001", "gemini-1.5-flash"]
                         
+                        for model_name in model_candidates:
+                            try:
+                                model = genai.GenerativeModel(model_name=model_name)
+                                # 測試一下模型是否真的存在 (用 count_tokens 輕量測試)
+                                model.count_tokens("test")
+                                print(f"成功使用模型: {model_name}")
+                                break
+                            except Exception:
+                                continue
+                        
+                        # 如果全部失敗，顯示可用模型清單供除錯
+                        if model is None:
+                            available_models = [m.name for m in genai.list_models()]
+                            st.error(f"❌ 找不到適合的模型。您的帳號可用模型如下：\n{available_models}")
+                            raise Exception("Model not found")
+                        
+                        # --- 開始生成 ---
                         prompt = """
                         請擔任專業的會議記錄員，聆聽這個檔案，並用繁體中文生成以下報告：
                         1. 【標題】：給這段內容一個精準的標題
@@ -169,7 +187,7 @@ else:
                         
                 except Exception as e:
                     st.error(f"發生錯誤：{str(e)}")
-                    st.info("如果是 API Key 錯誤，請檢查左側是否複製完整。")
+                    st.info("💡 小提示：如果出現 404 錯誤，可能是 API Key 的權限問題，或者模型名稱暫時不可用。")
                     
     except Exception as e:
         st.error(f"API 設定錯誤：{str(e)}")
