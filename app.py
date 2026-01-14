@@ -141,30 +141,48 @@ else:
                     if video_file.state.name == "FAILED":
                         st.error("❌ 檔案處理失敗，可能是格式不支援或檔案損毀。")
                     else:
-                        status_text.text('AI 正在聆聽並撰寫筆記...')
+                        status_text.text('正在智慧搜尋最適合的 AI 模型...')
+                        progress_bar.progress(50)
+                        
+                        # --- 智慧模型選擇邏輯 (自動偵測可用模型) ---
+                        target_model_name = None
+                        try:
+                            # 1. 直接問 API: 你有哪些模型支援 generateContent?
+                            available_models = []
+                            for m in genai.list_models():
+                                if 'generateContent' in m.supported_generation_methods:
+                                    available_models.append(m.name)
+                            
+                            # 2. 定義我們想要的優先順序 (Flash 優先，因為快)
+                            # API 回傳的名稱通常是 'models/gemini-1.5-flash' 這種格式
+                            preferences = ["flash", "pro", "gemini"]
+                            
+                            for pref in preferences:
+                                for model_name in available_models:
+                                    if pref in model_name.lower() and "1.5" in model_name:
+                                        target_model_name = model_name
+                                        break
+                                if target_model_name:
+                                    break
+                            
+                            # 如果還是沒找到，就隨便選一個可用的
+                            if not target_model_name and available_models:
+                                target_model_name = available_models[0]
+                                
+                            if not target_model_name:
+                                raise Exception("找不到任何可用的模型")
+
+                        except Exception as list_error:
+                            # 如果列出模型失敗，回退到最安全的預設值
+                            print(f"List models failed: {list_error}")
+                            target_model_name = "gemini-1.5-flash"
+
+                        status_text.text(f'使用模型: {target_model_name} 正在撰寫筆記...')
                         progress_bar.progress(70)
                         
-                        # --- 模型選擇邏輯 (自動救援) ---
-                        model = None
-                        model_candidates = ["gemini-1.5-flash-latest", "gemini-1.5-flash-001", "gemini-1.5-flash"]
-                        
-                        for model_name in model_candidates:
-                            try:
-                                model = genai.GenerativeModel(model_name=model_name)
-                                # 測試一下模型是否真的存在 (用 count_tokens 輕量測試)
-                                model.count_tokens("test")
-                                print(f"成功使用模型: {model_name}")
-                                break
-                            except Exception:
-                                continue
-                        
-                        # 如果全部失敗，顯示可用模型清單供除錯
-                        if model is None:
-                            available_models = [m.name for m in genai.list_models()]
-                            st.error(f"❌ 找不到適合的模型。您的帳號可用模型如下：\n{available_models}")
-                            raise Exception("Model not found")
-                        
                         # --- 開始生成 ---
+                        model = genai.GenerativeModel(model_name=target_model_name)
+                        
                         prompt = """
                         請擔任專業的會議記錄員，聆聽這個檔案，並用繁體中文生成以下報告：
                         1. 【標題】：給這段內容一個精準的標題
@@ -179,6 +197,7 @@ else:
                         status_text.text('完成！')
                         
                         st.success("🎉 分析完成！")
+                        st.markdown(f"**使用模型：** `{target_model_name}`")
                         st.markdown("### 📝 分析結果")
                         st.markdown(response.text)
                         
@@ -187,7 +206,7 @@ else:
                         
                 except Exception as e:
                     st.error(f"發生錯誤：{str(e)}")
-                    st.info("💡 小提示：如果出現 404 錯誤，可能是 API Key 的權限問題，或者模型名稱暫時不可用。")
+                    st.info("💡 小提示：如果持續失敗，請確認 API Key 是否有啟用 'Generative Language API' 權限。")
                     
     except Exception as e:
         st.error(f"API 設定錯誤：{str(e)}")
